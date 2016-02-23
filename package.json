@@ -1,0 +1,39 @@
+{
+  "name": "fed",
+  "version": "0.0.1",
+  "description": "Use FED to generate project",
+  "main": "fed.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/dongtong/fed.git"
+  },
+  "keywords": [
+    "FED",
+    "gulp",
+    "webpack",
+    "ES6",
+    "ES2015",
+    "Template",
+    "workflow",
+    "automate"
+  ],
+  "author": "dongtong",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/dongtong/fed/issues"
+  },
+  "homepage": "https://github.com/dongtong/fed#readme",
+  "dependencies": {
+    "commander": "^2.9.0",
+    "mkdirp": "^0.5.1",
+    "sorted-object": "^1.0.0"
+  },
+  "devDependencies": {
+    "mocha": "^2.4.5",
+    "rimraf": "^2.5.2"
+  },
+  "preferGlobal": true
+}

@@ -20,7 +20,7 @@ process.exit = _exit;
 var commanders = [
 	'new',                              // fed new xxx
 	'generate',                         // fed generate xxx
-	'server',                           // fed server or sn s
+	'server',                           // fed server or fed s
 	'deploy'                            // fed deploy xxx
 ];
 
@@ -28,3 +28,401 @@ var dsl = [
 	'model',                            // fed generate model 
 	'controller',                       // fed generate controller
 ];
+
+/**
+ * @function exit
+ * @description  exit application by code
+ * @param  {Integer} code -  exit code
+ */
+function exit(code) {
+
+	// flush output for Node.js Windows pipe bug
+  // https://github.com/joyent/node/issues/6247 is just one bug example
+  // https://github.com/visionmedia/mocha/issues/333 has a good discussion
+	function done () {
+		if (!(draining--)) _exit(code);
+	}
+
+	var draining = 0,
+	    streams = [process.stdout, process.stderr];
+
+	exit.exited = true;
+
+	streams.forEach(function (stream) {
+		draining++;
+		stream.write('', done);
+	});
+
+	done();
+}
+
+/**
+ * @function clearDirectory
+ * @description check path whether it is empty directory
+ * @param  {String}   path     - project directory path
+ * @param  {String}   projName - project name
+ * @param  {Function} callback - clear directory callback
+ */
+function clearDirectory(path, projName, callback) {
+	if(path === '.') {
+		path = './' + projName;
+	}
+	fs.readdir(path, function (err, files) {
+		if (err && 'ENOENT' != err.code) throw err;
+		callback(!files || !files.length);
+	});
+}
+
+/**
+ * @function loadConfig
+ * @description  read config file
+ * @param  {String} filename - file path
+ * @return {String}      - return file content
+ */
+function loadConfig(filename) {
+	return fs.readFileSync(path.join(__dirname, '..', filename), 'utf-8');
+}
+
+/**
+ * @function loadTemplate
+ * @description  read template file
+ * @param  {String} filename - file path
+ * @return {String}      - return file content
+ */
+function loadTemplate(filename) {
+	return fs.readFileSync(__dirname + '/../templates/' + filename, 'utf-8');
+}
+
+/**
+ * @function createFile
+ * @description write file content to project directory
+ * @param  {String} path    - write file path
+ * @param  {String} content - write content
+ * @param  {Number} mode    - created file mode
+ */
+function createFile(path, content, mode) {
+	fs.writeFileSync(path, content, {mode: mode || 0666});
+	console.log('   \x1b[36mcreate\x1b[0m : ' + path);
+}
+
+/**
+ * @function mkdir
+ * @description  make directory by path
+ * @param  {String}   path     - make directory path
+ * @param  {Function} callback - make directory callback function
+ */
+function mkdir(path, callback) {
+	mkdirp(path, 0755, function (err) {
+		if(err) throw err;
+		console.log('   \033[36mcreate\033[0m : ' + path);
+		callback && callback();
+	});
+}
+
+/**
+ * @function launchedFromWin
+ * @description check whether launched from windows platform
+ */
+function launchedFromWin() {
+	return process.platform === 'win32' && process.env._ === undefined;
+}
+
+/**
+ * @function replaceConfig
+ * @param  {String} content - the content will be replaced
+ * @param  {Object} cfg     - replace object config
+ * @return {String}         - replaced content
+ */
+function replaceConfig(content, cfg) {
+	var batchreplace = require('batchreplace');
+	var replacer = batchreplace.mapReplacer(cfg);
+	return replacer(content);	
+}
+
+/**
+ * @function confirm
+ * @description confirm command line
+ * @param  {String}   msg      - Confirm message
+ * @param  {Function} callback - Confirm callback
+ */
+function confirm(msg, callback) {
+	var rl = readline.createInterface({
+		input: process.stdin,
+		output: process.stdout
+	});
+
+	rl.question(msg, function (selected) {
+		rl.close();
+		callback(/^y|yes|ok|true$/i.test(selected));
+	});
+}
+
+/**
+ * @function setTemplate
+ * @description  Set application javascript template
+ */
+function setTemplate() {
+	program.template = 'arttemplate';
+  if(program.xtemplate) {
+  	program.template = 'xtemplate';
+  }
+}
+
+/**
+ * @function setProjectType
+ * @description  Generate different projects by option
+ */
+function setProjectType() {
+	program.type = 'cms';
+	if (program.mvs) {
+		program.type = 'mvs';
+	} else if (program.static) {
+		program.type = 'static';
+	}
+}
+
+/**
+ * @function setVersionControl
+ */
+function setVersionControl() {
+	program.vc = 'git';
+	if (program.svn) {
+		program.vc = 'svn';
+	}
+}
+
+/**
+ * @function afterCreateProject
+ * @param  {[type]} path - project path
+ */
+function afterCreateProject(path) {
+	var indicator = launchedFromWin() ? '>' : '$';
+
+	console.log();
+	console.log('   install dependencies:');
+	console.log('     %s cd %s && npm install', indicator, path);
+	console.log();
+	console.log('   run the app: gulp');
+	console.log();
+}
+
+/**
+ * @function createProject
+ * @description Initialize project by name and path
+ * @param  {String} projName - Create project name
+ * @param  {String} path     - Project path
+ */
+function createProject(projName, path) {
+
+	var steps = 8;
+
+	// if step is 0, that means project was created successfully
+	function done() {
+		if(--steps) return;
+		var indicator = launchedFromWin() ? '>' : '$';
+
+		console.log();
+		console.log('   install dependencies:');
+		console.log('     %s cd %s && npm install', indicator, path);
+		console.log();
+		console.log('   run the app: gulp');
+		console.log();
+	}
+
+
+		//generate cms static project
+		if(path === '.') {
+			path = './' + projName;
+		}
+
+		mkdir(path, function() {
+			mkdir(path + '/src', function() {
+        mkdir(path + '/src/javascripts/libs', function() {
+					done();
+				});
+				mkdir(path + '/src/javascripts/common', function() {
+					createFile(path + '/src/javascripts/common/const.js', loadTemplate('js/const.js'));
+					createFile(path + '/src/javascripts/common/http_api.js', loadConfig('config/http_api.js'));
+					createFile(path + '/src/javascripts/common/util.js', loadTemplate('js/util.js'));
+					done();
+				});
+				mkdir(path + '/src/javascripts/modules', function() {
+					done();
+				});
+				mkdir(path + '/src/javascripts/components', function() {
+					done();
+				});
+				mkdir(path + '/src/stylesheets', function() {
+					done();
+				});
+				mkdir(path + '/src/images', function() {
+					done();
+				});
+			});
+			mkdir(path + '/build', function() {
+				done();
+			});
+      
+      // create package.json start -->
+			var pkg = {
+				"name": projName,
+				"type": 'static',
+				"version": "0.0.1",
+				"private": true,
+				"script": {
+					"test": "mocha test/*.js"
+				},
+				"dependencies": {
+			    "ali-arttemplate": "^3.0.3",
+			    "archiver": "^0.21.0",
+			    "babelify": "^7.2.0",
+			    "browserify": "^13.0.0",
+			    "gulp-base64": "^0.1.3",
+			    "gulp-cssnano": "^2.1.0",
+			    "gulp-html-minifier": "^0.1.8",
+			    "jshint": "^2.8.0",
+			    "jshint-stylish": "^2.1.0",
+			    "vinyl-buffer": "^1.0.0",
+			    "vinyl-source-stream": "^1.1.0",
+			    "batchreplace": "^1.0.1"
+			  },
+			  "devDependencies": {
+			  	"browser-sync": "^2.11.0",
+			    "babel-preset-es2015": "^6.6.0",
+			    "cpx": "^1.2.1",
+			    "del": "^2.2.0",
+			    "glob": "^6.0.4",
+			    "gulp": "^3.9.0",
+			    "gulp-concat": "^2.6.0",
+			    "gulp-jshint": "^2.0.0",
+			    "gulp-notify": "^2.2.0",
+			    "gulp-plumber": "^1.0.1",
+			    "gulp-rename": "^1.2.2",
+			    "gulp-uglify": "^1.5.1",
+			    "ischanged": "^1.0.17",
+			    "mkdirp": "^0.5.1"
+			  }
+			};
+
+			switch (program.template) {
+				case 'arttemplate': 
+				  pkg.dependencies["ali-arttemplate"] = "^3.0.3";
+				  break;
+				case 'xtemplate': 
+				  pkg.dependencies["xtemplate"] = "^4.5.1";
+				  break;
+				default:
+				  console.log("unknow javascript template engine used");
+			}
+
+			// sort dependencies like npm(1)
+			pkg.dependencies = sortedObject(pkg.dependencies);
+
+			createFile(path + '/package.json', JSON.stringify(pkg, null, 2));
+			  
+			if (program.vc === 'git') {
+			  createFile(path + '/.gitignore', loadConfig('config/gitignore'));
+			}
+      
+      //replace static.gulpfile.js content by javascript object
+			createFile(path + '/gulpfile.js', replaceConfig(loadConfig('config/static.gulpfile.js'), {
+				projName: projName,
+				projPath: path,
+				cssPath: './src/stylesheets'
+			}));
+			createFile(path + '/.jshintrc', loadConfig('config/jshintrc'));
+	
+			done();
+		});	
+}
+
+/*
+* Insert before function(AOP)
+*/
+
+function before(obj, method, callback) {
+	var old = obj[method];
+
+	obj[method] = function () {
+		callback.call(this);
+		old.apply(this, arguments);
+	}
+}
+
+//output commander help
+/**
+ * Allow unknown options on the command line.
+ *
+ * @param {Boolean} arg if `true` or omitted, no error will be thrown
+ * for unknown options.
+ * @api public
+ */
+before(program, 'outputHelp', function () {
+	this.allowUnknownOption();
+});
+
+program.version(version)
+       .usage('<commanders> [options]')
+       .option('-x, --xtemplate', 'add xtemplate engine')
+       .option('    --css', 'the project common stylesheet')
+       .option('    --js', 'the project common javascript')
+       .option('-f, --force', 'create project force on not empty directory')
+       .option('    --svn', 'use svn version controler, default is git');
+
+program.command('new <name>')
+       .usage('[Project\ Name]')
+			 .description('Create project by name or path')
+			 .action(function(cmd, options){
+			 		// get project directory
+					var destinationPath = program.args.shift();
+
+					if(destinationPath === undefined) {
+						//TODO show help
+						console.log('project name is required');
+						exit(1);
+					}
+
+					// fed new xxxx
+					if(!(/\\|\//).test(destinationPath)) {
+						//fed new todo
+						projName = destinationPath;
+						destinationPath = '.';
+					} else {
+						// fed new (use current directory name as project name)
+						projName = path.basename(path.resolve(destinationPath));
+					}
+
+					// set project version control
+					setVersionControl();
+
+					// set project type
+					setProjectType();
+
+					// set template engine
+				  setTemplate();
+
+				  clearDirectory(destinationPath, projName, function (empty) {
+				  	if(empty || program.force) {
+				  		createProject(projName, destinationPath);
+				  	} else {
+				  		confirm('destination directory is not empty, continute? [y/n] ', function (selected) {
+				  			if(selected) {
+				  				process.stdin.destroy();
+				  				createProject(projName, destinationPath);
+				  			}else{
+				  				console.log('create project aborted');
+				  				exit(1);
+				  			}
+				  		});
+				  	}
+				  });
+			 })
+			 .on('--help', function() {
+			    console.log('  Examples:');
+			    console.log();
+			    console.log('    $ fed new todo');
+			    console.log('    $ fed new /Users/mac/workspace/todo');
+			    console.log();
+			  });  
+
+program.parse(process.argv);
